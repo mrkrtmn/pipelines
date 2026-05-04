@@ -1,0 +1,80 @@
+pipeline {
+    agent { label "Linux_Slave || Linux_Slave2 || Linux_Slave3" }
+    parameters {
+        string(name: 'RELEASE_TAG', defaultValue: '', description: 'Tag to create, e.g. v1.2.0', trim: true)
+        string(name: 'ORIGIN_BRANCH', defaultValue: 'develop', description: 'Branch from which to create the tag', trim: true)
+        booleanParam(name: 'WEBINAR_TERRAFORM', defaultValue: true, description: 'Tag in webinar-terraform')
+    }
+    options {
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+    stages {
+        stage('Validate parameters') {
+            steps {
+                script {
+                    if (!params.RELEASE_TAG?.trim()) {
+                        error "RELEASE_TAG is empty. You must specify the tag to create."
+                    }
+                    if (!(params.RELEASE_TAG ==~ /^v?\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$/)) {
+                        error "RELEASE_TAG '${params.RELEASE_TAG}' does not match semver format (e.g. v1.2.0 or 1.2.0-rc1)."
+                    }
+                    if (!(params.ORIGIN_BRANCH ==~ /^[a-zA-Z0-9._\/-]+$/)) {
+                        error "ORIGIN_BRANCH '${params.ORIGIN_BRANCH}' contains invalid characters."
+                    }
+                }
+            }
+        }
+        stage('Create tags') {
+            steps {
+                script {
+                    // List of repos to process based on the checkboxes
+                    def repos = []
+                    if (params.WEBINAR_TERRAFORM) {
+                        repos << [
+                            name: 'webinar-terraform',
+                            url:  'https://gitlab.faitpro.com.bo/root/webinar-terraform.git'
+                        ]
+                    }
+
+                    if (repos.empty) {
+                        error 'No repositories selected. Mark at least one checkbox before running.'
+                    }
+
+                    withCredentials([usernamePassword(
+                        credentialsId: 'git_dh',
+                        usernameVariable: 'GIT_USER',
+                        passwordVariable: 'GIT_PASS'
+                    )]) {
+                        repos.each { repo ->
+                            echo "===== Processing ${repo.name} ====="
+                            def authUrl = repo.url.replace('https://', "https://${GIT_USER}:${GIT_PASS}@")
+                            dir(repo.name) {
+                                sh "git clone --branch ${params.ORIGIN_BRANCH} --depth 1 '${authUrl}' ."
+                                sh "git config user.email 'jenkins@digitalharbor.us'"
+                                sh "git config user.name  'Jenkins CI'"
+
+                                def tagExists = sh(
+                                    script: "git rev-parse '${params.RELEASE_TAG}' >/dev/null 2>&1",
+                                    returnStatus: true
+                                ) == 0
+                                if (tagExists) {
+                                    error "Tag '${params.RELEASE_TAG}' already exists in ${repo.name}. Aborting."
+                                }
+
+                                sh "git tag -a '${params.RELEASE_TAG}' -m 'Release ${params.RELEASE_TAG}'"
+                                sh "git push origin '${params.RELEASE_TAG}'"
+                                echo ">>> Tag '${params.RELEASE_TAG}' created on ${repo.url}"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            cleanWs()
+        }
+    }
+}
