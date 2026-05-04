@@ -1,5 +1,5 @@
 pipeline {
-    agent { label "Linux_Slave || Linux_Slave2 || Linux_Slave3" }
+    agent { label 'agent-1' }
     parameters {
         string(name: 'RELEASE_TAG', defaultValue: '', description: 'Tag to create, e.g. v1.2.0', trim: true)
         string(name: 'ORIGIN_BRANCH', defaultValue: 'develop', description: 'Branch from which to create the tag', trim: true)
@@ -14,7 +14,7 @@ pipeline {
             steps {
                 script {
                     if (!params.RELEASE_TAG?.trim()) {
-                        error "RELEASE_TAG is empty. You must specify the tag to create."
+                        error 'RELEASE_TAG is empty. You must specify the tag to create.'
                     }
                     if (!(params.RELEASE_TAG ==~ /^v?\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$/)) {
                         error "RELEASE_TAG '${params.RELEASE_TAG}' does not match semver format (e.g. v1.2.0 or 1.2.0-rc1)."
