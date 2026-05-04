@@ -33,14 +33,24 @@ pipeline {
         stage('Create tags') {
             steps {
                 script {
-                    // List of repos to process based on the checkboxes
+                    echo "DEBUG -- entering Create tags stage"
+                    echo "DEBUG -- params.WEBINAR_TERRAFORM = '${params.WEBINAR_TERRAFORM}' type: ${params.WEBINAR_TERRAFORM?.getClass()?.simpleName}"
+
                     def repos = []
+                    echo "DEBUG -- repos initialized = ${repos}"
+
                     if (params.WEBINAR_TERRAFORM) {
+                        echo "DEBUG -- IF was TRUE, adding webinar-terraform"
                         repos << [
                             name: 'webinar-terraform',
                             url:  'https://gitlab.faitpro.com.bo/root/webinar-terraform.git'
                         ]
+                    } else {
+                        echo "DEBUG -- IF was FALSE (value: '${params.WEBINAR_TERRAFORM}')"
                     }
+
+                    echo "DEBUG -- repos after if = ${repos}"
+                    echo "DEBUG -- repos.empty = ${repos.empty}"
 
                     if (repos.empty) {
                         error 'No repositories selected. Mark at least one checkbox before running.'
