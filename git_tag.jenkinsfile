@@ -13,11 +13,6 @@ pipeline {
         stage('Validate parameters') {
             steps {
                 script {
-                    echo "DEBUG -- RELEASE_TAG       = '${params.RELEASE_TAG}'"
-                    echo "DEBUG -- ORIGIN_BRANCH     = '${params.ORIGIN_BRANCH}'"
-                    echo "DEBUG -- WEBINAR_TERRAFORM = '${params.WEBINAR_TERRAFORM}' (type: ${params.WEBINAR_TERRAFORM?.getClass()?.simpleName})"
-                    echo "DEBUG -- ALL PARAMS         = ${params}"
-
                     if (!params.RELEASE_TAG?.trim()) {
                         error 'RELEASE_TAG is empty. You must specify the tag to create.'
                     }
@@ -33,26 +28,16 @@ pipeline {
         stage('Create tags') {
             steps {
                 script {
-                    echo "DEBUG -- entering Create tags stage"
-                    echo "DEBUG -- params.WEBINAR_TERRAFORM = '${params.WEBINAR_TERRAFORM}' type: ${params.WEBINAR_TERRAFORM?.getClass()?.simpleName}"
-
+                    // List of repos to process based on the checkboxes
                     def repos = []
-                    echo "DEBUG -- repos initialized = ${repos}"
-
                     if (params.WEBINAR_TERRAFORM) {
-                        echo "DEBUG -- IF was TRUE, adding webinar-terraform"
                         repos << [
                             name: 'webinar-terraform',
                             url:  'https://gitlab.faitpro.com.bo/root/webinar-terraform.git'
                         ]
-                    } else {
-                        echo "DEBUG -- IF was FALSE (value: '${params.WEBINAR_TERRAFORM}')"
                     }
 
-                    echo "DEBUG -- repos after if = ${repos}"
-                    echo "DEBUG -- repos.empty = ${repos.empty}"
-
-                    if (repos.empty) {
+                    if (repos.isEmpty()) {
                         error 'No repositories selected. Mark at least one checkbox before running.'
                     }
 
