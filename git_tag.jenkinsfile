@@ -33,7 +33,7 @@ pipeline {
                     if (params.WEBINAR_TERRAFORM) {
                         repos << [
                             name: 'webinar-terraform',
-                            url:  'https://gitlab.faitpro.com.bo/root/webinar-terraform.git'
+                            url:  'http://gitlab/root/webinar-terraform.git'
                         ]
                     }
 
