@@ -48,7 +48,7 @@ pipeline {
                     )]) {
                         repos.each { repo ->
                             echo "===== Processing ${repo.name} ====="
-                            def authUrl = repo.url.replace('https://', "https://${GIT_USER}:${GIT_PASS}@")
+                            def authUrl = repo.url.replaceFirst('://', "://${GIT_USER}:${GIT_PASS}@")
                             dir(repo.name) {
                                 sh "git clone --branch ${params.ORIGIN_BRANCH} --depth 1 '${authUrl}' ."
                                 sh "git config user.email 'jenkins@digitalharbor.us'"
