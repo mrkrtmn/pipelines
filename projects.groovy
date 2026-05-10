@@ -15,7 +15,7 @@
 
 return [
     'faitpro-bot': [
-        githubRepo:    'https://github.com/franzalcon21/FAITPro-bot.git',
+        githubRepo:    'https://github.com/mrkrtmn/FAITPro-bot.git',
         branch:        'main',
         awsRegion:     'us-east-1',
         ecrRepo:       'faitpro-bot',
