@@ -1,0 +1,201 @@
+pipeline {
+    agent { label 'agent-1' }
+
+    parameters {
+        choice(
+            name: 'PROJECT',
+            choices: ['faitpro-bot'],
+            description: 'Bot a desplegar (debe existir en projects.groovy)'
+        )
+        string(
+            name: 'IMAGE_TAG',
+            defaultValue: '',
+            description: 'Tag custom para la imagen (default: short SHA del commit)',
+            trim: true
+        )
+        booleanParam(
+            name: 'PRUNE_AFTER',
+            defaultValue: true,
+            description: 'docker image prune en el agente al terminar'
+        )
+    }
+
+    options {
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+        timeout(time: 30, unit: 'MINUTES')
+        timestamps()
+    }
+
+    environment {
+        AWS_CREDS_ID  = 'aws-jenkins'
+        GIT_CREDS_ID  = 'github-pat'
+    }
+
+    stages {
+
+        stage('Validate parameters') {
+            steps {
+                script {
+                    if (!fileExists('projects.groovy')) {
+                        error 'projects.groovy no encontrado en el repo de pipelines.'
+                    }
+                    def projects = load 'projects.groovy'
+                    def proj = projects[params.PROJECT]
+                    if (!proj) {
+                        error "Proyecto '${params.PROJECT}' no está en projects.groovy."
+                    }
+                    if (params.IMAGE_TAG && !(params.IMAGE_TAG ==~ /^[a-zA-Z0-9._-]+$/)) {
+                        error "IMAGE_TAG '${params.IMAGE_TAG}' contiene caracteres inválidos."
+                    }
+
+                    env.GITHUB_REPO    = proj.githubRepo
+                    env.BRANCH         = proj.branch ?: 'main'
+                    env.AWS_REGION     = proj.awsRegion
+                    env.ECR_REPO       = proj.ecrRepo
+                    env.ECS_CLUSTER    = proj.ecsCluster
+                    env.ECS_SERVICE    = proj.ecsService
+                    env.TASK_FAMILY    = proj.taskFamily
+                    env.CONTAINER_NAME = proj.containerName ?: 'bot'
+
+                    echo "Proyecto:  ${params.PROJECT}"
+                    echo "Repo:      ${env.GITHUB_REPO}@${env.BRANCH}"
+                    echo "AWS:       ${env.AWS_REGION} / cluster=${env.ECS_CLUSTER} / service=${env.ECS_SERVICE}"
+                    echo "Container: ${env.CONTAINER_NAME} en task ${env.TASK_FAMILY}"
+                }
+            }
+        }
+
+        stage('Checkout source') {
+            steps {
+                dir('source') {
+                    git branch: env.BRANCH, url: env.GITHUB_REPO, credentialsId: env.GIT_CREDS_ID
+                    script {
+                        env.GIT_SHA         = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                        env.IMAGE_TAG_FINAL = params.IMAGE_TAG?.trim() ?: env.GIT_SHA
+                        echo "Commit:    ${env.GIT_SHA}"
+                        echo "Image tag: ${env.IMAGE_TAG_FINAL}"
+                    }
+                }
+            }
+        }
+
+        stage('Build image') {
+            steps {
+                dir('source') {
+                    sh '''
+                        docker build \
+                            --pull \
+                            -t "${ECR_REPO}:${IMAGE_TAG_FINAL}" \
+                            .
+                    '''
+                }
+            }
+        }
+
+        stage('Push to ECR') {
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: env.AWS_CREDS_ID
+                ]]) {
+                    script {
+                        env.AWS_ACCOUNT_ID = sh(
+                            script: 'aws sts get-caller-identity --query Account --output text',
+                            returnStdout: true
+                        ).trim()
+                        env.ECR_REGISTRY = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
+                    }
+                    sh '''
+                        aws ecr get-login-password --region "${AWS_REGION}" \
+                            | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+
+                        docker tag "${ECR_REPO}:${IMAGE_TAG_FINAL}" "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG_FINAL}"
+                        docker tag "${ECR_REPO}:${IMAGE_TAG_FINAL}" "${ECR_REGISTRY}/${ECR_REPO}:latest"
+
+                        docker push "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG_FINAL}"
+                        docker push "${ECR_REGISTRY}/${ECR_REPO}:latest"
+                    '''
+                }
+            }
+        }
+
+        stage('Register new task definition') {
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: env.AWS_CREDS_ID
+                ]]) {
+                    sh '''
+                        aws ecs describe-task-definition \
+                            --task-definition "${TASK_FAMILY}" \
+                            --region "${AWS_REGION}" \
+                            --query 'taskDefinition' \
+                            --output json > current-taskdef.json
+
+                        jq --arg image "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG_FINAL}" \
+                           --arg name "${CONTAINER_NAME}" '
+                              (.containerDefinitions[] | select(.name == $name) | .image) = $image
+                              | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                                    .compatibilities, .registeredAt, .registeredBy)
+                           ' current-taskdef.json > new-taskdef.json
+
+                        NEW_ARN=$(aws ecs register-task-definition \
+                            --cli-input-json file://new-taskdef.json \
+                            --region "${AWS_REGION}" \
+                            --query 'taskDefinition.taskDefinitionArn' \
+                            --output text)
+
+                        echo "${NEW_ARN}" > new-taskdef-arn.txt
+                        echo "Nueva task def: ${NEW_ARN}"
+                    '''
+                    script {
+                        env.NEW_TASKDEF_ARN = readFile('new-taskdef-arn.txt').trim()
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to ECS') {
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: env.AWS_CREDS_ID
+                ]]) {
+                    sh '''
+                        aws ecs update-service \
+                            --cluster "${ECS_CLUSTER}" \
+                            --service "${ECS_SERVICE}" \
+                            --task-definition "${NEW_TASKDEF_ARN}" \
+                            --region "${AWS_REGION}" > /dev/null
+
+                        echo "Esperando services-stable..."
+                        aws ecs wait services-stable \
+                            --cluster "${ECS_CLUSTER}" \
+                            --services "${ECS_SERVICE}" \
+                            --region "${AWS_REGION}"
+
+                        echo "Service estable: ${ECS_SERVICE}"
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Deploy de ${params.PROJECT} (${env.IMAGE_TAG_FINAL}) completado"
+        }
+        failure {
+            echo "Deploy de ${params.PROJECT} fallido"
+        }
+        always {
+            script {
+                if (params.PRUNE_AFTER) {
+                    sh 'docker image prune -f || true'
+                }
+            }
+            cleanWs()
+        }
+    }
+}

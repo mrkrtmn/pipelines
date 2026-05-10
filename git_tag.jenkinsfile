@@ -42,7 +42,7 @@ pipeline {
                     }
 
                     withCredentials([usernamePassword(
-                        credentialsId: 'gitlab-clone',
+                        credentialsId: 'git-tag',
                         usernameVariable: 'GIT_USER',
                         passwordVariable: 'GIT_PASS'
                     )]) {
