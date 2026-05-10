@@ -46,9 +46,9 @@ variable "memory" {
 }
 
 variable "desired_count" {
-  description = "Cantidad de tasks corriendo en el service"
+  description = "Cantidad de tasks corriendo en el service. Default 0: la infra existe pero no gasta compute hasta que se haga el primer Jenkins deploy y se suba con `aws ecs update-service --desired-count N`. Recordá que el service tiene `ignore_changes = [desired_count]`, así que cambios manuales no son revertidos por terraform."
   type        = number
-  default     = 1
+  default     = 0
 }
 
 variable "container_port" {
