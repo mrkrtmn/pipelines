@@ -17,9 +17,9 @@ resource "aws_iam_user_policy" "jenkins" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "ECRAuth"
-        Effect = "Allow"
-        Action = ["ecr:GetAuthorizationToken"]
+        Sid      = "ECRAuth"
+        Effect   = "Allow"
+        Action   = ["ecr:GetAuthorizationToken"]
         Resource = "*"
       },
       {
@@ -63,9 +63,9 @@ resource "aws_iam_user_policy" "jenkins" {
         ]
       },
       {
-        Sid    = "STSIdentity"
-        Effect = "Allow"
-        Action = "sts:GetCallerIdentity"
+        Sid      = "STSIdentity"
+        Effect   = "Allow"
+        Action   = "sts:GetCallerIdentity"
         Resource = "*"
       }
     ]

@@ -40,10 +40,10 @@ resource "aws_cloudwatch_log_group" "this" {
 # revierta el valor real seteado por CLI.
 
 resource "aws_secretsmanager_secret" "app" {
-  for_each    = toset(var.secret_keys)
-  name        = "${var.project_name}/${each.value}"
-  description = "Secret '${each.value}' para ${var.project_name}"
-  recovery_window_in_days = 0  # borrado inmediato en `terraform destroy`
+  for_each                = toset(var.secret_keys)
+  name                    = "${var.project_name}/${each.value}"
+  description             = "Secret '${each.value}' para ${var.project_name}"
+  recovery_window_in_days = 0 # borrado inmediato en `terraform destroy`
 }
 
 resource "aws_secretsmanager_secret_version" "app" {
