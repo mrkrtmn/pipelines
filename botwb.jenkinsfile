@@ -95,10 +95,11 @@ pipeline {
 
         stage('Push to ECR') {
             steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: env.AWS_CREDS_ID
-                ]]) {
+                withCredentials([usernamePassword(
+                    credentialsId: env.AWS_CREDS_ID,
+                    usernameVariable: 'AWS_ACCESS_KEY_ID',
+                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                )]) {
                     script {
                         env.AWS_ACCOUNT_ID = sh(
                             script: 'aws sts get-caller-identity --query Account --output text',
@@ -122,10 +123,11 @@ pipeline {
 
         stage('Register new task definition') {
             steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: env.AWS_CREDS_ID
-                ]]) {
+                withCredentials([usernamePassword(
+                    credentialsId: env.AWS_CREDS_ID,
+                    usernameVariable: 'AWS_ACCESS_KEY_ID',
+                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                )]) {
                     sh '''
                         aws ecs describe-task-definition \
                             --task-definition "${TASK_FAMILY}" \
@@ -158,10 +160,11 @@ pipeline {
 
         stage('Deploy to ECS') {
             steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: env.AWS_CREDS_ID
-                ]]) {
+                withCredentials([usernamePassword(
+                    credentialsId: env.AWS_CREDS_ID,
+                    usernameVariable: 'AWS_ACCESS_KEY_ID',
+                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                )]) {
                     sh '''
                         aws ecs update-service \
                             --cluster "${ECS_CLUSTER}" \
